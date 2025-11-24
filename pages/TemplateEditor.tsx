@@ -6,6 +6,7 @@ import { ProgramTemplate, Week, Day, ExerciseType } from '../types';
 import { Save, Plus, Trash2, ChevronDown, ChevronRight, FileJson, Layout } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getExerciseDisplayName } from '../utils/calculator';
+import { loadTemplatesWithDefaults } from '../utils/templates';
 
 export const TemplateEditor: React.FC = () => {
   const [templates, setTemplates] = useState<ProgramTemplate[]>(DEFAULT_TEMPLATES);
@@ -16,17 +17,9 @@ export const TemplateEditor: React.FC = () => {
 
   // Load from local storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('airi_templates');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setTemplates(parsed);
-        if (parsed.length > 0) setSelectedId(parsed[0].id);
-      } catch (e) {
-        console.error("Error loading templates", e);
-        setTemplates(DEFAULT_TEMPLATES);
-      }
-    }
+    const parsed = loadTemplatesWithDefaults();
+    setTemplates(parsed);
+    if (parsed.length > 0) setSelectedId(parsed[0].id);
   }, []);
 
   const currentTemplate = templates.find(t => t.id === selectedId) || templates[0];
@@ -73,50 +66,51 @@ export const TemplateEditor: React.FC = () => {
 
   const addWeek = () => {
     const newWeek: Week = {
-      id: `w-${Date.now()}`,
       name: `Week ${currentTemplate.weeks.length + 1}`,
       days: []
     };
     updateTemplate({ weeks: [...currentTemplate.weeks, newWeek] });
   };
 
-  const removeWeek = (weekId: string) => {
-    updateTemplate({ weeks: currentTemplate.weeks.filter(w => w.id !== weekId) });
-  };
-
-  const updateWeek = (weekId: string, updates: Partial<Week>) => {
-    const newWeeks = currentTemplate.weeks.map(w => w.id === weekId ? { ...w, ...updates } : w);
+  const removeWeek = (weekIdx: number) => {
+    const newWeeks = [...currentTemplate.weeks];
+    newWeeks.splice(weekIdx, 1);
     updateTemplate({ weeks: newWeeks });
   };
 
-  const addDay = (weekId: string) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const updateWeek = (weekIdx: number, updates: Partial<Week>) => {
+    const newWeeks = currentTemplate.weeks.map((w, idx) => idx === weekIdx ? { ...w, ...updates } : w);
+    updateTemplate({ weeks: newWeeks });
+  };
+
+  const addDay = (weekIdx: number) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const newDay: Day = {
       name: `Day ${week.days.length + 1}`,
       exercises: []
     };
-    updateWeek(weekId, { days: [...week.days, newDay] });
+    updateWeek(weekIdx, { days: [...week.days, newDay] });
   };
 
-  const removeDay = (weekId: string, dayIdx: number) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const removeDay = (weekIdx: number, dayIdx: number) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const newDays = [...week.days];
     newDays.splice(dayIdx, 1);
-    updateWeek(weekId, { days: newDays });
+    updateWeek(weekIdx, { days: newDays });
   };
 
-  const updateDay = (weekId: string, dayIdx: number, updates: Partial<Day>) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const updateDay = (weekIdx: number, dayIdx: number, updates: Partial<Day>) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const newDays = week.days.map((d, idx) => idx === dayIdx ? { ...d, ...updates } : d);
-    updateWeek(weekId, { days: newDays });
+    updateWeek(weekIdx, { days: newDays });
   };
 
   // Structured Exercise Update
-  const updateExercise = (weekId: string, dayIdx: number, exIdx: number, field: string, value: string | number) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const updateExercise = (weekIdx: number, dayIdx: number, exIdx: number, field: string, value: string | number) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const day = week.days[dayIdx];
     
@@ -124,24 +118,24 @@ export const TemplateEditor: React.FC = () => {
     // Create shallow copy of exercise object
     newExList[exIdx] = { ...newExList[exIdx], [field]: value };
     
-    updateDay(weekId, dayIdx, { exercises: newExList });
+    updateDay(weekIdx, dayIdx, { exercises: newExList });
   };
 
-  const addExercise = (weekId: string, dayIdx: number) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const addExercise = (weekIdx: number, dayIdx: number) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const day = week.days[dayIdx];
     const newExList = [...day.exercises, { name: ExerciseType.Squat, percent: 80, sets: 5, reps: 5 }];
-    updateDay(weekId, dayIdx, { exercises: newExList });
+    updateDay(weekIdx, dayIdx, { exercises: newExList });
   };
 
-  const removeExercise = (weekId: string, dayIdx: number, exIdx: number) => {
-    const week = currentTemplate.weeks.find(w => w.id === weekId);
+  const removeExercise = (weekIdx: number, dayIdx: number, exIdx: number) => {
+    const week = currentTemplate.weeks[weekIdx];
     if (!week) return;
     const day = week.days[dayIdx];
     const newExList = [...day.exercises];
     newExList.splice(exIdx, 1);
-    updateDay(weekId, dayIdx, { exercises: newExList });
+    updateDay(weekIdx, dayIdx, { exercises: newExList });
   };
 
 
@@ -215,18 +209,18 @@ export const TemplateEditor: React.FC = () => {
         {/* Right Column: Weeks & Days */}
         <div className="lg:col-span-2 space-y-6">
            {currentTemplate.weeks.map((week, wIdx) => (
-             <Card key={week.id} className="border-airi-base/30 relative">
+             <Card key={`week-${wIdx}`} className="border-airi-base/30 relative">
                <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
                   <div className="flex items-center gap-2">
                     <span className="bg-airi-base text-white text-xs font-bold px-2 py-1 rounded">WEEK {wIdx + 1}</span>
                     <input 
                       className="font-bold text-lg text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-airi-base focus:outline-none focus:bg-white" 
                       value={week.name} 
-                      onChange={(e) => updateWeek(week.id, {name: e.target.value})}
+                      onChange={(e) => updateWeek(wIdx, {name: e.target.value})}
                       placeholder={t.editor.week_name}
                     />
                   </div>
-                  <button onClick={() => removeWeek(week.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                  <button onClick={() => removeWeek(wIdx)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
                </div>
 
                <div className="space-y-4">
@@ -236,10 +230,10 @@ export const TemplateEditor: React.FC = () => {
                         <input 
                           className="font-bold text-gray-600 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-airi-base focus:outline-none w-full mr-4 focus:bg-white" 
                           value={day.name} 
-                          onChange={(e) => updateDay(week.id, dIdx, {name: e.target.value})}
+                          onChange={(e) => updateDay(wIdx, dIdx, {name: e.target.value})}
                           placeholder={t.editor.day_name}
                         />
-                        <button onClick={() => removeDay(week.id, dIdx)} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+                        <button onClick={() => removeDay(wIdx, dIdx)} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
                      </div>
                      
                      <div className="space-y-2">
@@ -250,7 +244,7 @@ export const TemplateEditor: React.FC = () => {
                              <select 
                                className="flex-grow min-w-[120px] p-1 border rounded text-sm font-bold text-gray-600 bg-white"
                                value={ex.name}
-                               onChange={(e) => updateExercise(week.id, dIdx, eIdx, 'name', e.target.value)}
+                               onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'name', e.target.value)}
                              >
                                {Object.values(ExerciseType).map(type => (
                                  <option key={type} value={type}>
@@ -264,7 +258,7 @@ export const TemplateEditor: React.FC = () => {
                                   type="number" 
                                   className="w-12 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.percent} 
-                                  onChange={(e) => updateExercise(week.id, dIdx, eIdx, 'percent', parseFloat(e.target.value) || 0)} 
+                                  onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'percent', parseFloat(e.target.value) || 0)} 
                                />
                                <span className="ml-1 text-xs text-gray-500">%</span>
                              </div>
@@ -273,28 +267,28 @@ export const TemplateEditor: React.FC = () => {
                                   type="number" 
                                   className="w-10 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.sets} 
-                                  onChange={(e) => updateExercise(week.id, dIdx, eIdx, 'sets', parseFloat(e.target.value) || 0)} 
+                                  onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'sets', parseFloat(e.target.value) || 0)} 
                                />
                                <span className="text-xs">x</span>
                                <input 
                                   type="number" 
                                   className="w-10 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.reps} 
-                                  onChange={(e) => updateExercise(week.id, dIdx, eIdx, 'reps', parseFloat(e.target.value) || 0)} 
+                                  onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'reps', parseFloat(e.target.value) || 0)} 
                                />
                              </div>
-                             <button onClick={() => removeExercise(week.id, dIdx, eIdx)} className="ml-auto text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
+                             <button onClick={() => removeExercise(wIdx, dIdx, eIdx)} className="ml-auto text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
                            </div>
                          );
                        })}
-                       <button onClick={() => addExercise(week.id, dIdx)} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 text-sm hover:border-airi-base hover:text-airi-base transition-colors flex justify-center items-center">
+                       <button onClick={() => addExercise(wIdx, dIdx)} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 text-sm hover:border-airi-base hover:text-airi-base transition-colors flex justify-center items-center">
                          <Plus size={14} className="mr-1"/> {t.editor.add_exercise}
                        </button>
                      </div>
                    </div>
                  ))}
                  <div className="flex justify-end">
-                   <Button variant="secondary" onClick={() => addDay(week.id)} className="text-sm py-1 px-3">
+                   <Button variant="secondary" onClick={() => addDay(wIdx)} className="text-sm py-1 px-3">
                      <Plus size={14} className="mr-1"/> {t.editor.add_day}
                    </Button>
                  </div>

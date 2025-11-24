@@ -2,18 +2,26 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { ProgramTemplate, UserSettings } from '../types';
-import { DEFAULT_SETTINGS, DEFAULT_TEMPLATES } from '../constants';
+import { ProgramTemplate, UserSettings, ExerciseType, Language } from '../types';
+import { DEFAULT_SETTINGS, DEFAULT_TEMPLATES, BODYWEIGHT_EXERCISES } from '../constants';
 import { Save, User, Disc, Heart, LayoutTemplate, Plus } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractRequiredLifts, getExerciseDisplayName } from '../utils/calculator';
 import { getCookie, setCookie } from '../utils/cookies';
 import { useNavigate } from 'react-router-dom';
+import { loadTemplatesWithDefaults } from '../utils/templates';
 
 export const Home: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [allTemplates, setAllTemplates] = useState<ProgramTemplate[]>(DEFAULT_TEMPLATES);
   const [saved, setSaved] = useState(false);
+  const [estimateForm, setEstimateForm] = useState({
+    exercise: ExerciseType.Squat,
+    weight: 60,
+    reps: 5,
+    rpe: '9',
+  });
+  const [estimated1RM, setEstimated1RM] = useState<number | null>(null);
   const { t, language } = useLanguage();
   const navigate = useNavigate();
 
@@ -43,34 +51,8 @@ export const Home: React.FC = () => {
     }
 
     // Load Templates (merge defaults with saved custom ones)
-    const storedTemplates = localStorage.getItem('airi_templates');
-    if (storedTemplates) {
-      try {
-        const parsed = JSON.parse(storedTemplates);
-        // Basic check for data integrity check: look at first exercise of first template
-        // If it's a string, it's the old format -> Reset to defaults
-        const isOldFormat = parsed.some((t: any) => 
-          t.weeks.some((w: any) => 
-            w.days.some((d: any) => 
-              d.exercises.length > 0 && typeof d.exercises[0] === 'string'
-            )
-          )
-        );
-
-        if (isOldFormat) {
-          console.warn("Detected old template format. Resetting to defaults.");
-          setAllTemplates(DEFAULT_TEMPLATES);
-          localStorage.setItem('airi_templates', JSON.stringify(DEFAULT_TEMPLATES));
-        } else {
-          setAllTemplates(parsed);
-        }
-      } catch (e) {
-        console.error("Failed to parse templates", e);
-        setAllTemplates(DEFAULT_TEMPLATES);
-      }
-    } else {
-      localStorage.setItem('airi_templates', JSON.stringify(DEFAULT_TEMPLATES));
-    }
+    const templatesFromStorage = loadTemplatesWithDefaults();
+    setAllTemplates(templatesFromStorage);
   }, []);
 
   // Compute required lifts based on currently selected template
@@ -110,6 +92,47 @@ export const Home: React.FC = () => {
   const createNewTemplate = () => {
     navigate('/template');
   };
+
+  const rpeToRir: Record<string, number> = {
+    '10': 0,    // RPE10 = 0 reps in reserve
+    '9.5': 0.5,
+    '9': 1,
+    '8.5': 1.5,
+    '8': 2,
+    '7.5': 2.5,
+    '7': 3,
+  };
+
+  const handleEstimateChange = (field: string, value: string) => {
+    setEstimateForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const estimateOneRM = () => {
+    const weight = parseFloat(String(estimateForm.weight));
+    const reps = parseInt(String(estimateForm.reps), 10);
+    if (!weight || !reps || weight <= 0 || reps <= 0) {
+      setEstimated1RM(null);
+      return;
+    }
+    const rir = rpeToRir[estimateForm.rpe] ?? 0;
+    const repsToFailure = reps + rir;
+    const isBodyweightMove = BODYWEIGHT_EXERCISES.includes(estimateForm.exercise as ExerciseType);
+    const liftedWeight = isBodyweightMove ? settings.bodyWeight + weight : weight; // treat pull-ups as BW + external load
+    const estTotal1RM = liftedWeight * (1 + repsToFailure / 30); // Epley with RIR adjustment
+    const estExternal1RM = isBodyweightMove ? Math.max(estTotal1RM - settings.bodyWeight, 0) : estTotal1RM;
+    const value = Math.round(estExternal1RM * 100) / 100;
+    setEstimated1RM(value);
+  };
+
+  const rpeOptions = [
+    { value: '10', labelZh: '极限 (RPE10)', labelEn: 'Max effort (RPE10)' },
+    { value: '9.5', labelZh: '几乎极限 (RPE9.5)', labelEn: 'Near max (RPE9.5)' },
+    { value: '9', labelZh: '吃力 (RPE9)', labelEn: 'Hard (RPE9)' },
+    { value: '8.5', labelZh: '较吃力 (RPE8.5)', labelEn: 'Fairly hard (RPE8.5)' },
+    { value: '8', labelZh: '有余力 (RPE8)', labelEn: 'Some reps left (RPE8)' },
+    { value: '7.5', labelZh: '轻松 (RPE7.5)', labelEn: 'Easy (RPE7.5)' },
+    { value: '7', labelZh: '非常轻松 (RPE7)', labelEn: 'Very easy (RPE7)' },
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -201,6 +224,70 @@ export const Home: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* 1RM Estimator */}
+      <Card title={t.home.estimator_title} className="border-airi-base/50">
+        <p className="text-sm text-gray-600 mb-4">{t.home.estimator_desc}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">{t.home.estimator_exercise}</label>
+            <select
+              value={estimateForm.exercise}
+              onChange={(e) => handleEstimateChange('exercise', e.target.value)}
+              className="w-full p-3 border-2 border-airi-skin rounded-xl focus:border-airi-base focus:ring-2 focus:ring-airi-base/30 outline-none bg-white font-bold text-gray-700"
+            >
+              {Object.values(ExerciseType).map(type => (
+                <option key={type} value={type}>
+                  {getExerciseDisplayName(type, language)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">{t.home.estimator_weight}</label>
+            <input
+              type="number"
+              value={estimateForm.weight}
+              onChange={(e) => handleEstimateChange('weight', e.target.value)}
+              className="w-full p-3 border-2 border-airi-skin rounded-xl focus:border-airi-base focus:ring-2 focus:ring-airi-base/30 outline-none bg-white text-gray-700 font-bold"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">{t.home.estimator_reps}</label>
+            <input
+              type="number"
+              value={estimateForm.reps}
+              onChange={(e) => handleEstimateChange('reps', e.target.value)}
+              className="w-full p-3 border-2 border-airi-skin rounded-xl focus:border-airi-base focus:ring-2 focus:ring-airi-base/30 outline-none bg-white text-gray-700 font-bold"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">{t.home.estimator_rpe}</label>
+            <select
+              value={estimateForm.rpe}
+              onChange={(e) => handleEstimateChange('rpe', e.target.value)}
+              className="w-full p-3 border-2 border-airi-skin rounded-xl focus:border-airi-base focus:ring-2 focus:ring-airi-base/30 outline-none bg-white font-bold text-gray-700"
+            >
+              {rpeOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {language === Language.ZH ? opt.labelZh : opt.labelEn}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col md:flex-row items-start md:items-center gap-4">
+          <Button variant="secondary" onClick={estimateOneRM} className="px-6">
+            {t.home.estimator_calc}
+          </Button>
+          <div className="text-lg font-bold text-gray-700">
+            {t.home.estimator_result}：
+            <span className="ml-2 text-2xl text-airi-base">
+              {estimated1RM !== null ? `${estimated1RM} kg` : '--'}
+            </span>
+          </div>
+        </div>
+      </Card>
 
       <div className="flex justify-center pt-4 pb-8">
         <Button onClick={handleSave} icon={<Save size={20} />} className="w-full md:w-auto md:px-12 py-3 text-lg">
