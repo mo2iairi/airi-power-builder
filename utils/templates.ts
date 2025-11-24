@@ -1,6 +1,8 @@
 import { DEFAULT_TEMPLATES } from '../constants';
 import { ProgramTemplate } from '../types';
 
+const defaultTemplateIds = new Set(DEFAULT_TEMPLATES.map((t) => t.id));
+
 const isOldTemplateFormat = (templates: any[]): boolean => {
   return templates.some((t: any) =>
     t.weeks?.some((w: any) =>
@@ -12,16 +14,12 @@ const isOldTemplateFormat = (templates: any[]): boolean => {
 };
 
 /**
- * Merge user templates with the latest built-in defaults by ID to avoid losing new shipped templates.
+ * Merge user templates with the latest built-in defaults.
+ * System templates always win; persisted copies with the same id are discarded.
  */
 export const mergeDefaultTemplates = (templates: ProgramTemplate[]): ProgramTemplate[] => {
-  const map = new Map(templates.map((t) => [t.id, t]));
-  DEFAULT_TEMPLATES.forEach((tpl) => {
-    if (!map.has(tpl.id)) {
-      map.set(tpl.id, tpl);
-    }
-  });
-  return Array.from(map.values());
+  const customOnly = templates.filter((t) => !defaultTemplateIds.has(t.id));
+  return [...DEFAULT_TEMPLATES, ...customOnly];
 };
 
 /**
@@ -30,7 +28,8 @@ export const mergeDefaultTemplates = (templates: ProgramTemplate[]): ProgramTemp
 export const loadTemplatesWithDefaults = (): ProgramTemplate[] => {
   const storedTemplates = localStorage.getItem('airi_templates');
   if (!storedTemplates) {
-    localStorage.setItem('airi_templates', JSON.stringify(DEFAULT_TEMPLATES));
+    // Nothing cached yet; serve built-ins and keep storage empty so system templates stay immutable.
+    localStorage.setItem('airi_templates', JSON.stringify([]));
     return DEFAULT_TEMPLATES;
   }
 
@@ -38,17 +37,20 @@ export const loadTemplatesWithDefaults = (): ProgramTemplate[] => {
     const parsed = JSON.parse(storedTemplates);
 
     if (!Array.isArray(parsed) || isOldTemplateFormat(parsed)) {
-      localStorage.setItem('airi_templates', JSON.stringify(DEFAULT_TEMPLATES));
+      localStorage.setItem('airi_templates', JSON.stringify([]));
       return DEFAULT_TEMPLATES;
     }
 
     const merged = mergeDefaultTemplates(parsed);
-    if (merged.length !== parsed.length) {
-      localStorage.setItem('airi_templates', JSON.stringify(merged));
+
+    // Persist only custom templates; defaults stay source-of-truth in constants.
+    const customOnly = merged.filter((t) => !defaultTemplateIds.has(t.id));
+    if (customOnly.length !== parsed.length) {
+      localStorage.setItem('airi_templates', JSON.stringify(customOnly));
     }
     return merged;
   } catch (e) {
-    localStorage.setItem('airi_templates', JSON.stringify(DEFAULT_TEMPLATES));
+    localStorage.setItem('airi_templates', JSON.stringify([]));
     return DEFAULT_TEMPLATES;
   }
 };

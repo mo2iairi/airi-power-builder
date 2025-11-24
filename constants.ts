@@ -72,7 +72,7 @@ export const DEFAULT_TEMPLATES: ProgramTemplate[] = [
     {
       "id": "default-1",
       "name": "通用模板（力训）",
-      "author": "system",
+      "author": "system（自带模板不可编辑）",
       "description": "蹲推拉常规计划",
       "weeks": [
         {
@@ -172,7 +172,7 @@ export const DEFAULT_TEMPLATES: ProgramTemplate[] = [
     {
         "id": "default-2",
         "name": "单手引体冲刺四周",
-        "author": "system",
+        "author": "system（自带模板不可编辑）",
         "description": "从需要10kg（15%体重）辅助才能完成单手引体到最终达成一个的冲刺计划",
         "weeks": [
             {
@@ -276,7 +276,7 @@ export const DEFAULT_TEMPLATES: ProgramTemplate[] = [
     {
     "id": "default-3",
     "name": "增肌常见计划",
-    "author": "system",
+    "author": "system（自带模板不可编辑）",
     "description": "",
     "weeks": [
       {

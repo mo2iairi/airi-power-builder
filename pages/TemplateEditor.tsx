@@ -8,6 +8,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { getExerciseDisplayName } from '../utils/calculator';
 import { loadTemplatesWithDefaults } from '../utils/templates';
 
+const SYSTEM_TEMPLATE_IDS = new Set(DEFAULT_TEMPLATES.map((t) => t.id));
+
 export const TemplateEditor: React.FC = () => {
   const [templates, setTemplates] = useState<ProgramTemplate[]>(DEFAULT_TEMPLATES);
   const [selectedId, setSelectedId] = useState<string>(DEFAULT_TEMPLATES[0].id);
@@ -23,10 +25,16 @@ export const TemplateEditor: React.FC = () => {
   }, []);
 
   const currentTemplate = templates.find(t => t.id === selectedId) || templates[0];
+  const isSystemTemplate = SYSTEM_TEMPLATE_IDS.has(selectedId);
+
+  const persistCustomTemplates = (newTemplates: ProgramTemplate[]) => {
+    const customOnly = newTemplates.filter((t) => !SYSTEM_TEMPLATE_IDS.has(t.id));
+    setTemplates([...DEFAULT_TEMPLATES, ...customOnly]);
+    localStorage.setItem('airi_templates', JSON.stringify(customOnly));
+  };
 
   const saveToStorage = (newTemplates: ProgramTemplate[]) => {
-    setTemplates(newTemplates);
-    localStorage.setItem('airi_templates', JSON.stringify(newTemplates));
+    persistCustomTemplates(newTemplates);
   };
 
   const handleCreateTemplate = () => {
@@ -44,15 +52,16 @@ export const TemplateEditor: React.FC = () => {
   };
 
   const handleDeleteTemplate = () => {
-    if (templates.length <= 1) return; // Prevent deleting last one
+    if (isSystemTemplate || templates.length <= 1) return; // Prevent deleting system or last one
     if (!window.confirm(t.editor.delete_confirm)) return;
     
     const updated = templates.filter(t => t.id !== selectedId);
     saveToStorage(updated);
-    setSelectedId(updated[0].id);
+    setSelectedId(DEFAULT_TEMPLATES[0].id);
   };
 
   const updateTemplate = (updates: Partial<ProgramTemplate>) => {
+    if (isSystemTemplate) return;
     const updated = templates.map(t => t.id === selectedId ? { ...t, ...updates } : t);
     saveToStorage(updated);
   };
@@ -159,7 +168,7 @@ export const TemplateEditor: React.FC = () => {
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <Button variant="secondary" onClick={handleCreateTemplate} icon={<Plus size={18}/>}>{t.editor.new_template}</Button>
-          <Button variant="danger" onClick={handleDeleteTemplate} icon={<Trash2 size={18}/>} disabled={templates.length <= 1}></Button>
+          <Button variant="danger" onClick={handleDeleteTemplate} icon={<Trash2 size={18}/>} disabled={isSystemTemplate || templates.length <= 1}></Button>
           <Button onClick={handleSave} icon={<Save size={18}/>}>{t.editor.save}</Button>
         </div>
       </div>
@@ -178,15 +187,15 @@ export const TemplateEditor: React.FC = () => {
              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-600 mb-1">{t.editor.template_name}</label>
-                  <input className="w-full p-2 border-2 border-airi-skin rounded-lg bg-white text-gray-900" value={currentTemplate.name} onChange={(e) => updateTemplate({name: e.target.value})} />
+                  <input className="w-full p-2 border-2 border-airi-skin rounded-lg bg-white text-gray-900" value={currentTemplate.name} onChange={(e) => updateTemplate({name: e.target.value})} disabled={isSystemTemplate} />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-600 mb-1">{t.editor.template_author}</label>
-                  <input className="w-full p-2 border-2 border-airi-skin rounded-lg bg-white text-gray-900" value={currentTemplate.author} onChange={(e) => updateTemplate({author: e.target.value})} />
+                  <input className="w-full p-2 border-2 border-airi-skin rounded-lg bg-white text-gray-900" value={currentTemplate.author} onChange={(e) => updateTemplate({author: e.target.value})} disabled={isSystemTemplate} />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-600 mb-1">{t.editor.template_desc}</label>
-                  <textarea className="w-full p-2 border-2 border-airi-skin rounded-lg h-24 resize-none bg-white text-gray-900" value={currentTemplate.description} onChange={(e) => updateTemplate({description: e.target.value})} />
+                  <textarea className="w-full p-2 border-2 border-airi-skin rounded-lg h-24 resize-none bg-white text-gray-900" value={currentTemplate.description} onChange={(e) => updateTemplate({description: e.target.value})} disabled={isSystemTemplate} />
                 </div>
                 <div className="pt-4 border-t border-dashed border-gray-200">
                   <button onClick={() => setShowJson(!showJson)} className="flex items-center text-sm text-gray-500 hover:text-airi-base">
@@ -200,7 +209,7 @@ export const TemplateEditor: React.FC = () => {
            </Card>
            
            <div className="flex justify-center">
-             <Button onClick={addWeek} variant="secondary" className="w-full border-dashed border-4 border-airi-shadow1 bg-transparent hover:bg-white text-airi-shadow2">
+             <Button onClick={addWeek} variant="secondary" className="w-full border-dashed border-4 border-airi-shadow1 bg-transparent hover:bg-white text-airi-shadow2" disabled={isSystemTemplate}>
                <Plus size={20} className="mr-2"/> {t.editor.add_week}
              </Button>
            </div>
@@ -217,10 +226,11 @@ export const TemplateEditor: React.FC = () => {
                       className="font-bold text-lg text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-airi-base focus:outline-none focus:bg-white" 
                       value={week.name} 
                       onChange={(e) => updateWeek(wIdx, {name: e.target.value})}
+                      disabled={isSystemTemplate}
                       placeholder={t.editor.week_name}
                     />
                   </div>
-                  <button onClick={() => removeWeek(wIdx)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                  <button onClick={() => removeWeek(wIdx)} className="text-red-400 hover:text-red-600" disabled={isSystemTemplate}><Trash2 size={16}/></button>
                </div>
 
                <div className="space-y-4">
@@ -231,9 +241,10 @@ export const TemplateEditor: React.FC = () => {
                           className="font-bold text-gray-600 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-airi-base focus:outline-none w-full mr-4 focus:bg-white" 
                           value={day.name} 
                           onChange={(e) => updateDay(wIdx, dIdx, {name: e.target.value})}
+                          disabled={isSystemTemplate}
                           placeholder={t.editor.day_name}
                         />
-                        <button onClick={() => removeDay(wIdx, dIdx)} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+                        <button onClick={() => removeDay(wIdx, dIdx)} className="text-gray-400 hover:text-red-500" disabled={isSystemTemplate}><Trash2 size={14}/></button>
                      </div>
                      
                      <div className="space-y-2">
@@ -241,15 +252,16 @@ export const TemplateEditor: React.FC = () => {
                          return (
                            <div key={eIdx} className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-lg shadow-sm">
                              {/* Exercise Name Dropdown to Enforce Enum */}
-                             <select 
-                               className="flex-grow min-w-[120px] p-1 border rounded text-sm font-bold text-gray-600 bg-white"
-                               value={ex.name}
-                               onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'name', e.target.value)}
-                             >
-                               {Object.values(ExerciseType).map(type => (
-                                 <option key={type} value={type}>
-                                   {getExerciseDisplayName(type, language)}
-                                 </option>
+                              <select 
+                                className="flex-grow min-w-[120px] p-1 border rounded text-sm font-bold text-gray-600 bg-white"
+                                value={ex.name}
+                                onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'name', e.target.value)}
+                                disabled={isSystemTemplate}
+                              >
+                                {Object.values(ExerciseType).map(type => (
+                                  <option key={type} value={type}>
+                                    {getExerciseDisplayName(type, language)}
+                                  </option>
                                ))}
                              </select>
 
@@ -259,6 +271,7 @@ export const TemplateEditor: React.FC = () => {
                                   className="w-12 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.percent} 
                                   onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'percent', parseFloat(e.target.value) || 0)} 
+                                  disabled={isSystemTemplate}
                                />
                                <span className="ml-1 text-xs text-gray-500">%</span>
                              </div>
@@ -268,6 +281,7 @@ export const TemplateEditor: React.FC = () => {
                                   className="w-10 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.sets} 
                                   onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'sets', parseFloat(e.target.value) || 0)} 
+                                  disabled={isSystemTemplate}
                                />
                                <span className="text-xs">x</span>
                                <input 
@@ -275,20 +289,21 @@ export const TemplateEditor: React.FC = () => {
                                   className="w-10 p-1 border rounded text-sm text-center bg-white text-gray-600" 
                                   value={ex.reps} 
                                   onChange={(e) => updateExercise(wIdx, dIdx, eIdx, 'reps', parseFloat(e.target.value) || 0)} 
+                                  disabled={isSystemTemplate}
                                />
                              </div>
-                             <button onClick={() => removeExercise(wIdx, dIdx, eIdx)} className="ml-auto text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
+                             <button onClick={() => removeExercise(wIdx, dIdx, eIdx)} className="ml-auto text-gray-300 hover:text-red-500" disabled={isSystemTemplate}><Trash2 size={14}/></button>
                            </div>
                          );
                        })}
-                       <button onClick={() => addExercise(wIdx, dIdx)} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 text-sm hover:border-airi-base hover:text-airi-base transition-colors flex justify-center items-center">
+                       <button onClick={() => addExercise(wIdx, dIdx)} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 text-sm hover:border-airi-base hover:text-airi-base transition-colors flex justify-center items-center" disabled={isSystemTemplate}>
                          <Plus size={14} className="mr-1"/> {t.editor.add_exercise}
                        </button>
                      </div>
                    </div>
                  ))}
                  <div className="flex justify-end">
-                   <Button variant="secondary" onClick={() => addDay(wIdx)} className="text-sm py-1 px-3">
+                   <Button variant="secondary" onClick={() => addDay(wIdx)} className="text-sm py-1 px-3" disabled={isSystemTemplate}>
                      <Plus size={14} className="mr-1"/> {t.editor.add_day}
                    </Button>
                  </div>
